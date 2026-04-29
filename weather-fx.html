@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>WeatherFX</title>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #1e293b, #0f172a);
+      color: white;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 22px;
+      padding: 20px 0 30px;
+    }
+
+    .weather-card {
+      width: 90%;
+      max-width: 630px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 24px;
+      padding: 28px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.35);
+      text-align: center;
+    }
+
+    .forecast-card {
+      width: 90%;
+      max-width: 630px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 24px;
+      padding: 24px 28px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.35);
+      text-align: center;
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: 2rem;
+    }
+
+    .forecast-card h2 {
+      margin-top: 0;
+      margin-bottom: 18px;
+      font-size: 1.35rem;
+    }
+
+    .location {
+      font-size: 0.95rem;
+      opacity: 0.78;
+      margin-top: -8px;
+      margin-bottom: 12px;
+      line-height: 1.45;
+    }
+
+    .temp {
+      font-size: 4rem;
+      font-weight: bold;
+      margin: 20px 0 10px;
+    }
+
+    .weather-emoji {
+      font-size: 3rem;
+      margin-bottom: 8px;
+    }
+
+    .details {
+      font-size: 1.1rem;
+      line-height: 1.7;
+      opacity: 0.9;
+    }
+
+    .updated-time {
+      font-size: 0.9rem;
+      opacity: 0.75;
+    }
+
+    button {
+      margin-top: 20px;
+      padding: 12px 18px;
+      border: none;
+      border-radius: 12px;
+      background: white;
+      color: #0f172a;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #e2e8f0;
+    }
+
+    .forecast-days {
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+    }
+
+    .forecast-day {
+      flex: 1;
+      min-width: 0;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 18px;
+      padding: 16px 10px;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+    }
+
+    .forecast-day-name {
+      font-size: 0.95rem;
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+
+    .forecast-temp {
+      font-size: 1.1rem;
+      line-height: 1.5;
+      opacity: 0.92;
+    }
+
+    .footer-info {
+      width: 90%;
+      max-width: 630px;
+      text-align: center;
+      font-size: 0.9rem;
+      line-height: 1.6;
+      opacity: 0.75;
+      margin-top: -8px;
+    }
+
+    .status {
+      font-size: 0.9rem;
+      word-break: break-word;
+    }
+
+    .brand {
+      font-size: 0.85rem;
+    }
+
+    .error {
+      color: #fecaca;
+    }
+
+    @media (max-width: 600px) {
+      .forecast-days {
+        flex-direction: column;
+      }
+
+      button {
+        display: block;
+        width: 100%;
+        margin-left: 0;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="weather-card">
+    <h1 id="weatherTitle">My Weather</h1>
+
+    <div id="locationLabel" class="location">Coordinates: Detecting...</div>
+
+    <div id="temperature" class="temp">--°</div>
+
+    <div id="weatherEmoji" class="weather-emoji">🌡️</div>
+
+    <div class="details">
+      <div id="condition">Condition: Loading...</div>
+      <div id="wind">Wind: -- mph</div>
+      <div id="humidity">Humidity: --%</div>
+      <div id="feelsLike">Feels like: --°F</div>
+      <div id="sunTimes">☀️ Sunrise: -- | 🌙 Sunset: --</div>
+      <div id="time" class="updated-time">Updated: --</div>
+    </div>
+
+    <button onclick="useMyLocation()">Reload Location</button>
+  </div>
+
+  <div class="forecast-card">
+    <h2>Next 5 Days</h2>
+    <div id="forecastDays" class="forecast-days">
+      <div class="forecast-day">Loading...</div>
+    </div>
+  </div>
+
+  <div class="footer-info">
+    <div id="status" class="status">Local weather loading...</div>
+    <div class="brand">WeatherFX app by: BostonyFX</div>
+  </div>
+
+  <script>
+    const savedLocationKey = "myWeatherSavedLocation";
+
+    const fallbackLocation = {
+      name: "Boston, MA",
+      latitude: 42.3601,
+      longitude: -71.0589,
+      accuracy: null
+    };
+
+    let currentLocation = fallbackLocation;
+
+    function saveLocation(location) {
+      localStorage.setItem(savedLocationKey, JSON.stringify(location));
+    }
+
+    function loadSavedLocation() {
+      const saved = localStorage.getItem(savedLocationKey);
+
+      if (!saved) {
+        return null;
+      }
+
+      try {
+        return JSON.parse(saved);
+      } catch (error) {
+        console.error("Could not read saved location:", error);
+        return null;
+      }
+    }
+
+    function getCityOnly(locationName) {
+      if (!locationName) {
+        return "My";
+      }
+
+      return locationName.split(",")[0].trim();
+    }
+
+    function updateWeatherTitle(locationName) {
+      const city = getCityOnly(locationName);
+      document.getElementById("weatherTitle").textContent = city + " Weather";
+      document.title = city + " Weather";
+    }
+
+    function formatAccuracy(meters) {
+      if (!meters && meters !== 0) {
+        return "Accuracy: unknown";
+      }
+
+      const feet = meters * 3.28084;
+      const miles = meters / 1609.344;
+
+      if (miles >= 0.1) {
+        return "Accuracy: within about " + miles.toFixed(1) + " miles";
+      }
+
+      return "Accuracy: within about " + Math.round(feet) + " feet";
+    }
+
+    function weatherCodeToText(code) {
+      const codes = {
+        0: "Clear sky",
+        1: "Mainly clear",
+        2: "Partly cloudy",
+        3: "Overcast",
+        45: "Fog",
+        48: "Rime fog",
+        51: "Light drizzle",
+        53: "Moderate drizzle",
+        55: "Dense drizzle",
+        56: "Light freezing drizzle",
+        57: "Dense freezing drizzle",
+        61: "Slight rain",
+        63: "Moderate rain",
+        65: "Heavy rain",
+        66: "Light freezing rain",
+        67: "Heavy freezing rain",
+        71: "Slight snow",
+        73: "Moderate snow",
+        75: "Heavy snow",
+        77: "Snow grains",
+        80: "Slight rain showers",
+        81: "Moderate rain showers",
+        82: "Violent rain showers",
+        85: "Slight snow showers",
+        86: "Heavy snow showers",
+        95: "Thunderstorm",
+        96: "Thunderstorm with slight hail",
+        99: "Thunderstorm with heavy hail"
+      };
+
+      return codes[code] || "Unknown weather code: " + code;
+    }
+
+    function weatherCodeToIcon(code) {
+      const icons = {
+        0: "☀️",
+        1: "🌤️",
+        2: "⛅",
+        3: "☁️",
+
+        45: "🌫️",
+        48: "🌫️",
+
+        51: "🌦️",
+        53: "🌦️",
+        55: "🌧️",
+        56: "🌧️",
+        57: "🌧️",
+
+        61: "🌧️",
+        63: "🌧️",
+        65: "🌧️",
+        66: "🌧️",
+        67: "🌧️",
+
+        71: "🌨️",
+        73: "🌨️",
+        75: "❄️",
+        77: "❄️",
+
+        80: "🌦️",
+        81: "🌧️",
+        82: "⛈️",
+
+        85: "🌨️",
+        86: "❄️",
+
+        95: "⛈️",
+        96: "⛈️",
+        99: "⛈️"
+      };
+
+      return icons[code] || "🌡️";
+    }
+
+    function formatSunTime(timeString) {
+      if (!timeString) {
+        return "--";
+      }
+
+      return new Date(timeString).toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit"
+      });
+    }
+
+    function formatUpdatedTime(timeString) {
+      if (!timeString) {
+        return "--";
+      }
+
+      const updatedDate = new Date(timeString);
+
+      return updatedDate.toLocaleString([], {
+        weekday: "long",
+        month: "numeric",
+        day: "numeric",
+	year: "numeric",
+        hour: "numeric",
+        minute: "2-digit"
+      });
+    }
+
+    function setStatus(message, isError = false) {
+      const status = document.getElementById("status");
+      status.textContent = message;
+      status.className = isError ? "status error" : "status";
+    }
+
+    function updateLocationLabel(name, latitude, longitude, accuracy) {
+      updateWeatherTitle(name);
+
+      document.getElementById("locationLabel").innerHTML =
+        "Coordinates: " + latitude.toFixed(3) + ", " + longitude.toFixed(3) + "<br>" +
+        formatAccuracy(accuracy);
+    }
+
+    async function getCityName(latitude, longitude) {
+      const url =
+        "https://api.bigdatacloud.net/data/reverse-geocode-client" +
+        "?latitude=" + encodeURIComponent(latitude) +
+        "&longitude=" + encodeURIComponent(longitude) +
+        "&localityLanguage=en";
+
+      try {
+        const response = await fetch(url);
+
+        if (!response.ok) {
+          throw new Error("Reverse geocoding error: HTTP " + response.status);
+        }
+
+        const data = await response.json();
+
+        console.log("Reverse geocode:", data);
+
+        const city =
+          data.locality ||
+          data.city ||
+          data.principalSubdivision ||
+          "Unknown location";
+
+        const region = data.principalSubdivision || "";
+        const country = data.countryName || "";
+
+        let displayName = city;
+
+        if (region && region !== city) {
+          displayName += ", " + region;
+        }
+
+        if (country && country !== "United States") {
+          displayName += ", " + country;
+        }
+
+        return displayName;
+
+      } catch (error) {
+        console.error(error);
+        return "Your current location";
+      }
+    }
+
+    function displayFiveDayForecast(daily) {
+      const forecastBox = document.getElementById("forecastDays");
+
+      if (
+        !daily ||
+        !daily.time ||
+        !daily.temperature_2m_max ||
+        !daily.temperature_2m_min
+      ) {
+        forecastBox.innerHTML =
+          '<div class="forecast-day">Forecast unavailable</div>';
+        return;
+      }
+
+      let html = "";
+
+      for (let i = 1; i <= 5; i++) {
+        const date = new Date(daily.time[i] + "T12:00:00");
+
+        const dayName = date.toLocaleDateString(undefined, {
+          weekday: "short"
+        });
+
+        const high = Math.round(daily.temperature_2m_max[i]);
+        const low = Math.round(daily.temperature_2m_min[i]);
+
+        html += `
+          <div class="forecast-day">
+            <div class="forecast-day-name">${dayName}</div>
+            <div class="forecast-temp">High: ${high}°F</div>
+            <div class="forecast-temp">Low: ${low}°F</div>
+          </div>
+        `;
+      }
+
+      forecastBox.innerHTML = html;
+    }
+
+    async function getWeather(latitude, longitude, locationName, accuracy = null) {
+      const url =
+        "https://api.open-meteo.com/v1/forecast" +
+        "?latitude=" + encodeURIComponent(latitude) +
+        "&longitude=" + encodeURIComponent(longitude) +
+        "&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m" +
+        "&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset" +
+        "&temperature_unit=fahrenheit" +
+        "&wind_speed_unit=mph" +
+        "&forecast_days=6" +
+        "&timezone=auto";
+
+      try {
+        setStatus("Loading weather...");
+        document.getElementById("condition").textContent = "Condition: Loading...";
+
+        updateLocationLabel(locationName, latitude, longitude, accuracy);
+
+        const response = await fetch(url);
+
+        if (!response.ok) {
+          throw new Error("Weather API error: HTTP " + response.status);
+        }
+
+        const data = await response.json();
+
+        console.log("Weather:", data);
+
+        if (!data.current) {
+          throw new Error("No current weather data found.");
+        }
+
+        const current = data.current;
+
+        const weatherIcon = weatherCodeToIcon(current.weather_code);
+        const weatherText = weatherCodeToText(current.weather_code);
+
+        const sunrise = data.daily && data.daily.sunrise ? data.daily.sunrise[0] : null;
+        const sunset = data.daily && data.daily.sunset ? data.daily.sunset[0] : null;
+
+        document.getElementById("temperature").textContent =
+          Math.round(current.temperature_2m) + "°F";
+
+        document.getElementById("weatherEmoji").textContent = weatherIcon;
+
+        document.getElementById("condition").textContent =
+          "Condition: " + weatherText;
+
+        document.getElementById("wind").textContent =
+          "Wind: " + Math.round(current.wind_speed_10m) + " mph";
+
+        document.getElementById("humidity").textContent =
+          "Humidity: " + Math.round(current.relative_humidity_2m) + "%";
+
+        document.getElementById("feelsLike").textContent =
+          "Feels like: " + Math.round(current.apparent_temperature) + "°F";
+
+        document.getElementById("sunTimes").textContent =
+          "☀️ Sunrise: " + formatSunTime(sunrise) +
+          " | 🌙 Sunset: " + formatSunTime(sunset);
+
+        document.getElementById("time").textContent =
+          "Updated: " + formatUpdatedTime(current.time);
+
+        displayFiveDayForecast(data.daily);
+
+        setStatus("Local weather loaded successfully");
+
+      } catch (error) {
+        console.error(error);
+
+        document.getElementById("condition").textContent =
+          "Condition: Could not load weather.";
+
+        document.getElementById("weatherEmoji").textContent = "⚠️";
+
+        document.getElementById("sunTimes").textContent =
+          "☀️ Sunrise: -- | 🌙 Sunset: --";
+
+        document.getElementById("time").textContent =
+          "Updated: --";
+
+        document.getElementById("forecastDays").innerHTML =
+          '<div class="forecast-day">Forecast unavailable</div>';
+
+        setStatus("Error: " + error.message, true);
+      }
+    }
+
+    async function useMyLocation() {
+      if (!navigator.geolocation) {
+        setStatus("This browser does not support location. Using Boston instead.", true);
+        useBoston(false);
+        return;
+      }
+
+      setStatus("Reloading browser location with higher accuracy...");
+
+      navigator.geolocation.getCurrentPosition(
+        async function(position) {
+          const latitude = position.coords.latitude;
+          const longitude = position.coords.longitude;
+          const accuracy = position.coords.accuracy;
+
+          console.log("Browser geolocation:", {
+            latitude,
+            longitude,
+            accuracy
+          });
+
+          setStatus("Finding city name...");
+
+          const locationName = await getCityName(latitude, longitude);
+
+          currentLocation = {
+            name: locationName,
+            latitude: latitude,
+            longitude: longitude,
+            accuracy: accuracy
+          };
+
+          saveLocation(currentLocation);
+
+          getWeather(latitude, longitude, locationName, accuracy);
+        },
+
+        function(error) {
+          console.error(error);
+
+          let message = "Could not get your location.";
+
+          if (error.code === error.PERMISSION_DENIED) {
+            message = "Location permission was denied. Using Boston instead.";
+          } else if (error.code === error.POSITION_UNAVAILABLE) {
+            message = "Location is unavailable. Using Boston instead.";
+          } else if (error.code === error.TIMEOUT) {
+            message = "Location request timed out. Using Boston instead.";
+          }
+
+          setStatus(message, true);
+          useBoston(false);
+        },
+
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0
+        }
+      );
+    }
+
+    function useBoston(shouldSave = false) {
+      currentLocation = fallbackLocation;
+
+      if (shouldSave) {
+        saveLocation(currentLocation);
+      }
+
+      getWeather(
+        fallbackLocation.latitude,
+        fallbackLocation.longitude,
+        fallbackLocation.name,
+        fallbackLocation.accuracy
+      );
+    }
+
+    function refreshWeather() {
+      getWeather(
+        currentLocation.latitude,
+        currentLocation.longitude,
+        currentLocation.name,
+        currentLocation.accuracy
+      );
+    }
+
+    const savedLocation = loadSavedLocation();
+
+    if (savedLocation) {
+      currentLocation = savedLocation;
+
+      getWeather(
+        savedLocation.latitude,
+        savedLocation.longitude,
+        savedLocation.name,
+        savedLocation.accuracy
+      );
+
+      setStatus("Loaded saved location. Click 'Reload Location' to update it.");
+    } else {
+      useMyLocation();
+    }
+  </script>
+</body>
+</html>
